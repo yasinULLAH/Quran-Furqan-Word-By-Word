@@ -559,7 +559,7 @@ async function storeWordsData(wordsData) {
         
         completed = endIdx;
         document.getElementById('loaderStatus').textContent = 
-            `Saving data: ${Math.round((completed/total)*100)}% (${failed} errors)`;
+            `Loading data(First Time only): ${Math.round((completed/total)*100)}% (${failed} errors)`;
     }
     
     return Promise.resolve();

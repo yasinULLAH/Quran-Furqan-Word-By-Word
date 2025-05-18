@@ -1676,6 +1676,232 @@ console.error('Error loading bookmarks:', error);
     
         // Initialize Surah counts array for demo (number of ayahs per surah)
         s.c = [7, 286, 200, 176, 120, 165, 206, 111, 108, 109, 123, 111, 43, 52, 49, 73, 111, 104, 98, 135, 112, 78, 118, 64, 77, 227, 93, 69, 59, 37, 34, 30, 31, 34, 32, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+    
+    
+    function addAudioFeature() {
+// Add audio player to mushaf view
+const audioControls = `    <div class="row mb-3" id="audioControls">       <div class="col-md-8">         <div class="input-group">           <button class="btn btn-outline-secondary" id="audioPlayPause">             <i class="bi bi-play-fill"></i>           </button>           <button class="btn btn-outline-secondary" id="audioStop">             <i class="bi bi-stop-fill"></i>           </button>           <select class="form-select" id="audioReciter">             <option value="ar.alafasy">Mishary Rashid Alafasy</option>             <option value="ar.abdulbasit">Abdul Basit</option>             <option value="ar.abdurrahmaansudais">Abdurrahmaan As-Sudais</option>           </select>           <select class="form-select" id="audioMode">             <option value="ayah">Ayah by Ayah</option>             <option value="surah">Full Surah</option>             <option value="continuous">Continuous</option>           </select>         </div>       </div>       <div class="col-md-4">         <div class="progress" style="height: 38px;">           <div id="audioProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>         </div>       </div>     </div>  `;
+
+// Insert before the mushaf container
+const container = document.getElementById('mushafContainer');
+container.parentNode.insertBefore(document.createRange().createContextualFragment(audioControls), container);
+
+// Audio player state
+let audioPlayer = {
+audio: new Audio(),
+currentSurah: 1,
+currentAyah: 1,
+isPlaying: false,
+reciter: 'ar.alafasy',
+mode: 'ayah',
+queue: []
+};
+
+// Event listeners
+document.getElementById('audioPlayPause').addEventListener('click', toggleAudio);
+document.getElementById('audioStop').addEventListener('click', stopAudio);
+document.getElementById('audioReciter').addEventListener('change', e => { audioPlayer.reciter = e.target.value; });
+document.getElementById('audioMode').addEventListener('change', e => { audioPlayer.mode = e.target.value; });
+
+// Audio functions
+function toggleAudio() {
+if (audioPlayer.isPlaying) {
+pauseAudio();
+} else {
+playAudio();
+}
+}
+
+function playAudio() {
+const btn = document.getElementById('audioPlayPause');
+
+    // If we're starting fresh
+    if (!audioPlayer.isPlaying) {
+      // Get current surah/ayah from mushaf view or use stored values
+      if (mushafViewMode === 'single') {
+        audioPlayer.currentSurah = currentMushafSurah;
+        audioPlayer.currentAyah = 1;
+      }
+      
+      // Prepare queue based on mode
+      prepareAudioQueue();
+      
+      // Start playing
+      playNextAyah();
+      
+      audioPlayer.isPlaying = true;
+      btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+    } else {
+      // We're resuming
+      audioPlayer.audio.play();
+      btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+    }
+    }
+
+function pauseAudio() {
+audioPlayer.audio.pause();
+audioPlayer.isPlaying = false;
+document.getElementById('audioPlayPause').innerHTML = '<i class="bi bi-play-fill"></i>';
+}
+
+function stopAudio() {
+audioPlayer.audio.pause();
+audioPlayer.audio.currentTime = 0;
+audioPlayer.isPlaying = false;
+audioPlayer.queue = [];
+document.getElementById('audioPlayPause').innerHTML = '<i class="bi bi-play-fill"></i>';
+document.getElementById('audioProgress').style.width = '0%';
+
+    // Remove any highlights
+    removeAyahHighlights();
+    }
+
+function prepareAudioQueue() {
+audioPlayer.queue = [];
+
+    switch (audioPlayer.mode) {
+      case 'ayah':
+        audioPlayer.queue.push({surah: audioPlayer.currentSurah, ayah: audioPlayer.currentAyah});
+        break;
+      case 'surah':
+        const maxAyahs = s.c[audioPlayer.currentSurah - 1];
+        for (let i = 1; i <= maxAyahs; i++) {
+          audioPlayer.queue.push({surah: audioPlayer.currentSurah, ayah: i});
+        }
+        break;
+      case 'continuous':
+        // Start from current and add next 10 ayahs (can be extended)
+        let currentS = audioPlayer.currentSurah;
+        let currentA = audioPlayer.currentAyah;
+        
+        for (let i = 0; i < 10; i++) {
+          audioPlayer.queue.push({surah: currentS, ayah: currentA});
+          
+          // Move to next ayah
+          if (currentA < s.c[currentS - 1]) {
+            currentA++;
+          } else if (currentS < 114) {
+            currentS++;
+            currentA = 1;
+          } else {
+            break; // End of Quran
+          }
+        }
+        break;
+    }
+    }
+
+function playNextAyah() {
+if (audioPlayer.queue.length === 0) {
+stopAudio();
+return;
+}
+
+    const nextAyah = audioPlayer.queue.shift();
+    audioPlayer.currentSurah = nextAyah.surah;
+    audioPlayer.currentAyah = nextAyah.ayah;
+    
+    // Highlight current ayah
+    highlightAyah(nextAyah.surah, nextAyah.ayah);
+    
+    // Scroll to make sure it's visible
+    scrollToAyah(nextAyah.surah, nextAyah.ayah);
+    
+    // Get audio URL
+    const globalAyahIndex = getGlobalAyahIndex(nextAyah.surah, nextAyah.ayah);
+    const audioUrl = `https://cdn.islamic.network/quran/audio/128/${audioPlayer.reciter}/${globalAyahIndex}.mp3`;
+    
+    // Play audio
+    audioPlayer.audio.src = audioUrl;
+    audioPlayer.audio.play();
+    
+    // Update progress
+    updateAudioProgress();
+    
+    // Set up for next ayah
+    audioPlayer.audio.onended = playNextAyah;
+    }
+
+function updateAudioProgress() {
+audioPlayer.audio.ontimeupdate = function() {
+const percent = (audioPlayer.audio.currentTime / audioPlayer.audio.duration) * 100;
+document.getElementById('audioProgress').style.width = percent + '%';
+};
+}
+
+function highlightAyah(surah, ayah) {
+// Remove previous highlights
+removeAyahHighlights();
+
+    // Add highlight to current ayah
+    if (mushafViewMode === 'single') {
+      const ayahElements = document.querySelectorAll(`#singleSurahView .ayah-num`);
+      for (const el of ayahElements) {
+        if (el.textContent.includes(`${ayah}`)) {
+          el.parentNode.style.backgroundColor = 'rgba(0, 123, 255, 0.2)';
+          el.parentNode.style.borderRadius = '5px';
+          el.parentNode.style.padding = '5px';
+        }
+      }
+    } else {
+      const ayahElement = document.querySelector(`#continuousView .ayah-text[data-surah="${surah}"][data-ayah="${ayah}"]`);
+      if (ayahElement) {
+        ayahElement.style.backgroundColor = 'rgba(0, 123, 255, 0.2)';
+        ayahElement.style.borderRadius = '5px';
+        ayahElement.style.padding = '5px';
+      }
+    }
+    }
+
+function removeAyahHighlights() {
+const highlightedAyahs = document.querySelectorAll('.ayah-text[style*="background-color"], #singleSurahView div[style*="background-color"]');
+for (const el of highlightedAyahs) {
+el.style.backgroundColor = '';
+el.style.borderRadius = '';
+el.style.padding = '';
+}
+}
+
+function scrollToAyah(surah, ayah) {
+// Make sure the right surah is loaded in single view mode
+if (mushafViewMode === 'single' && currentMushafSurah !== surah) {
+currentMushafSurah = surah;
+document.getElementById('mushafSurahSelect').value = surah;
+loadSingleSurahView(surah);
+
+      // Need to wait for the DOM to update
+      setTimeout(() => {
+        const ayahElement = document.querySelector(`#singleSurahView .ayah-num:contains("${ayah}")`);
+        if (ayahElement) {
+          ayahElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+    } else {
+      // Find and scroll to the ayah
+      let ayahElement;
+      if (mushafViewMode === 'single') {
+        // Use a more flexible selector to find the ayah
+        const ayahElements = document.querySelectorAll('#singleSurahView .ayah-num');
+        for (const el of ayahElements) {
+          if (el.textContent.includes(`${ayah}`)) {
+            ayahElement = el.parentNode;
+            break;
+          }
+        }
+      } else {
+        ayahElement = document.querySelector(`#continuousView .ayah-text[data-surah="${surah}"][data-ayah="${ayah}"]`);
+      }
+      
+      if (ayahElement) {
+        ayahElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+    }
+}
+
+// Call this function to add audio feature to the app
+addAudioFeature();
+
     </script>
     </body>
 </html>
